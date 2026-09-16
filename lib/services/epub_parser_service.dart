@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
 import 'package:epub_pro/epub_pro.dart';
 import 'package:image/image.dart' as img;
 import 'package:uuid/uuid.dart';
@@ -20,7 +22,8 @@ class EpubParserService {
 
   Future<Book> parseEpub(String filePath) async {
     try {
-      final bytes = await File(filePath).readAsBytes();
+      var bytes = await File(filePath).readAsBytes();
+      bytes = _patchEpubBytesIfNeeded(bytes);
       final epubBook = await EpubReader.readBook(bytes);
 
       final title = epubBook.title?.trim().isNotEmpty == true
@@ -117,6 +120,66 @@ class EpubParserService {
     text = text.replaceAll(RegExp(r'\n '), '\n');
     text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n');
     return text.trim();
+  }
+
+  static Uint8List _patchEpubBytesIfNeeded(Uint8List bytes) {
+    try {
+      final archive = ZipDecoder().decodeBytes(bytes);
+      bool modified = false;
+      ArchiveFile? opfFile;
+      
+      for (var file in archive) {
+        if (file.name.endsWith('.opf')) {
+          opfFile = file;
+          break;
+        }
+      }
+
+      if (opfFile != null) {
+        String opfContent = String.fromCharCodes(opfFile.content as List<int>);
+        
+        // If it's version 3 and doesn't have properties="nav", it will crash epub_pro
+        if (opfContent.contains('version="3.0"') || opfContent.contains('version="3"')) {
+          if (!opfContent.contains('properties="nav"')) {
+            // Try to find a toc/nav item and inject properties="nav"
+            final navRegex = RegExp(r'<item[^>]+(?:id="[^"]*nav[^"]*"|id="[^"]*toc[^"]*"|href="[^"]*nav[^"]*"|href="[^"]*toc[^"]*")[^>]*/>', caseSensitive: false);
+            if (navRegex.hasMatch(opfContent)) {
+               opfContent = opfContent.replaceFirstMapped(navRegex, (match) {
+                 String item = match.group(0)!;
+                 if (!item.contains('properties=')) {
+                   return item.replaceFirst('/>', ' properties="nav"/>');
+                 }
+                 return item;
+               });
+               
+               final newFile = ArchiveFile(opfFile.name, opfContent.codeUnits.length, opfContent.codeUnits);
+               final index = archive.files.indexOf(opfFile);
+               if (index != -1) archive.files[index] = newFile;
+               
+               modified = true;
+            } else {
+               // Downgrade to EPUB 2 parser
+               opfContent = opfContent.replaceAll(RegExp(r'version="3\.\d"'), 'version="2.0"');
+               opfContent = opfContent.replaceAll('version="3"', 'version="2.0"');
+               
+               final newFile = ArchiveFile(opfFile.name, opfContent.codeUnits.length, opfContent.codeUnits);
+               final index = archive.files.indexOf(opfFile);
+               if (index != -1) archive.files[index] = newFile;
+               
+               modified = true;
+            }
+          }
+        }
+      }
+
+      if (modified) {
+        final encoded = ZipEncoder().encode(archive);
+        return Uint8List.fromList(encoded);
+      }
+    } catch (e) {
+      // If patching fails, just return original bytes
+    }
+    return bytes;
   }
 
   static int countWords(String text) {

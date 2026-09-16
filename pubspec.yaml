@@ -39,6 +39,8 @@ dependencies:
   epub_pro: ^5.6.0
   image: ^4.10.1
   uuid: ^4.6.0
+  flutter_tts: ^4.2.5
+  archive: ^4.3.0
 
 dev_dependencies:
   flutter_test:

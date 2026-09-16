@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/book.dart';
 import '../widgets/chapter_list_item.dart';
+import '../providers/player_provider.dart';
+import 'player_screen.dart';
 
-class BookDetailScreen extends StatelessWidget {
+class BookDetailScreen extends ConsumerWidget {
   final Book book;
 
   const BookDetailScreen({
@@ -11,14 +14,14 @@ class BookDetailScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
         title: Text(book.title),
       ),
       body: Column(
         children: [
-          _buildHeader(context),
+          _buildHeader(context, ref),
           const Divider(height: 1),
           Expanded(
             child: ListView.builder(
@@ -28,9 +31,11 @@ class BookDetailScreen extends StatelessWidget {
                 return ChapterListItem(
                   chapter: chapter,
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Playback coming in Slice 2'),
+                    ref.read(playerProvider.notifier).playChapter(chapter);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const PlayerScreen(),
+                        fullscreenDialog: true,
                       ),
                     );
                   },
@@ -43,7 +48,7 @@ class BookDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Row(
@@ -86,11 +91,15 @@ class BookDetailScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Playback coming in Slice 2'),
-                      ),
-                    );
+                    if (book.chapters.isNotEmpty) {
+                      ref.read(playerProvider.notifier).playChapter(book.chapters.first);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PlayerScreen(),
+                          fullscreenDialog: true,
+                        ),
+                      );
+                    }
                   },
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('START LISTENING'),
