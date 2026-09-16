@@ -19,6 +19,30 @@ class PlayerScreen extends ConsumerWidget {
           tooltip: 'Minimize',
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          PopupMenuButton<double>(
+            initialValue: playerState.playbackSpeed,
+            tooltip: 'Playback Speed',
+            icon: Row(
+              children: [
+                Text(
+                  '${playerState.playbackSpeed}x',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const Icon(Icons.speed),
+              ],
+            ),
+            onSelected: (speed) => notifier.setSpeed(speed),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 0.75, child: Text('0.75x')),
+              const PopupMenuItem(value: 1.0, child: Text('1.0x (Normal)')),
+              const PopupMenuItem(value: 1.25, child: Text('1.25x')),
+              const PopupMenuItem(value: 1.5, child: Text('1.5x')),
+              const PopupMenuItem(value: 2.0, child: Text('2.0x')),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: chapter == null
           ? const Center(child: Text('No chapter selected'))
@@ -39,12 +63,12 @@ class PlayerScreen extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.stop),
+                        icon: const Icon(Icons.replay_10),
                         iconSize: 48,
-                        onPressed: () => notifier.stop(),
-                        tooltip: 'Stop',
+                        onPressed: () => notifier.rewind(),
+                        tooltip: 'Rewind',
                       ),
-                      const SizedBox(width: 32),
+                      const SizedBox(width: 24),
                       FloatingActionButton.large(
                         onPressed: () {
                           if (playerState.isPlaying) {
@@ -58,8 +82,20 @@ class PlayerScreen extends ConsumerWidget {
                           size: 48,
                         ),
                       ),
+                      const SizedBox(width: 24),
+                      IconButton(
+                        icon: const Icon(Icons.forward_10),
+                        iconSize: 48,
+                        onPressed: () => notifier.fastForward(),
+                        tooltip: 'Fast Forward',
+                      ),
                     ],
                   ),
+                  const SizedBox(height: 32),
+                  if (playerState.currentChunks.isNotEmpty)
+                    LinearProgressIndicator(
+                      value: playerState.currentChunkIndex / playerState.currentChunks.length,
+                    ),
                 ],
               ),
             ),
