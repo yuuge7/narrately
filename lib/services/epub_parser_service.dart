@@ -47,25 +47,41 @@ class EpubParserService {
       
       final bookId = _uuid.v4();
       final chapters = <Chapter>[];
+      final seenFiles = <String>{};
 
       for (int i = 0; i < flattenedChapters.length; i++) {
         final epubChap = flattenedChapters[i];
+        
+        // Prevent duplication if multiple TOC entries point to the same HTML file
+        if (epubChap.contentFileName != null) {
+          if (seenFiles.contains(epubChap.contentFileName!)) {
+            continue;
+          }
+          seenFiles.add(epubChap.contentFileName!);
+        }
+        
         final chapTitle = epubChap.title?.trim().isNotEmpty == true
             ? epubChap.title!
-            : 'Chapter ${i + 1}';
+            : 'Chapter ${chapters.length + 1}';
             
         final plainText = EpubParserService.extractPlainText(epubChap.htmlContent);
         final wordCount = EpubParserService.countWords(plainText);
         
+        // Skip completely empty chapters
+        if (wordCount == 0) continue;
+        
         chapters.add(Chapter(
           id: _uuid.v4(),
           bookId: bookId,
-          index: i,
+          index: chapters.length,
           title: chapTitle,
           textContent: plainText,
           wordCount: wordCount,
         ));
       }
+
+      // If we still have too many tiny chapters, concatenate them
+      final mergedChapters = _mergeTinyChapters(chapters);
 
       return Book(
         id: bookId,
@@ -73,11 +89,37 @@ class EpubParserService {
         author: author,
         filePath: filePath,
         coverImagePath: coverImagePath,
-        chapters: chapters,
+        chapters: mergedChapters,
       );
     } catch (e) {
       throw Exception('Failed to parse EPUB file: $e');
     }
+  }
+
+  List<Chapter> _mergeTinyChapters(List<Chapter> original) {
+    if (original.isEmpty) return original;
+    
+    final merged = <Chapter>[];
+    Chapter current = original.first;
+    
+    for (int i = 1; i < original.length; i++) {
+      final next = original[i];
+      // If current is less than 500 words or the next is less than 500 words, merge them
+      // (This prevents tiny 1-minute chapters)
+      if (current.wordCount < 500 || next.wordCount < 100) {
+        current = current.copyWith(
+          title: '${current.title} / ${next.title}',
+          textContent: '${current.textContent}\n\n${next.title}\n\n${next.textContent}',
+          wordCount: current.wordCount + next.wordCount,
+        );
+      } else {
+        merged.add(current.copyWith(index: merged.length));
+        current = next;
+      }
+    }
+    merged.add(current.copyWith(index: merged.length));
+    
+    return merged;
   }
 
   List<EpubChapter> _flattenChapters(List<EpubChapter> chapters) {

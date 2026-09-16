@@ -1,10 +1,10 @@
 import 'package:file_picker/file_picker.dart';
 
 class FilePickerService {
-  Future<String?> pickEpubFile() async {
+  Future<String?> pickBookFile() async {
     final file = await FilePicker.pickFile(
       type: FileType.custom,
-      allowedExtensions: ['epub'],
+      allowedExtensions: ['epub', 'pdf'],
     );
     return file?.path;
   }

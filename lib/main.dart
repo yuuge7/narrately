@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'screens/library_screen.dart';
+import 'services/audio_handler.dart';
+import 'providers/theme_provider.dart';
+import 'screens/main_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+  await initAudioService();
 
   runApp(
     const ProviderScope(
@@ -18,13 +21,16 @@ void main() async {
   );
 }
 
-class NarratelyApp extends StatelessWidget {
+class NarratelyApp extends ConsumerWidget {
   const NarratelyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+
     return MaterialApp(
       title: 'Narrately',
+      themeMode: themeMode,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.deepPurple,
@@ -39,8 +45,7 @@ class NarratelyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      themeMode: ThemeMode.system,
-      home: const LibraryScreen(),
+      home: const MainScreen(),
     );
   }
 }

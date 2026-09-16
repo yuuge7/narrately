@@ -36,4 +36,22 @@ class Chapter {
       wordCount: map['word_count'],
     );
   }
+
+  Chapter copyWith({
+    String? id,
+    String? bookId,
+    int? index,
+    String? title,
+    String? textContent,
+    int? wordCount,
+  }) {
+    return Chapter(
+      id: id ?? this.id,
+      bookId: bookId ?? this.bookId,
+      index: index ?? this.index,
+      title: title ?? this.title,
+      textContent: textContent ?? this.textContent,
+      wordCount: wordCount ?? this.wordCount,
+    );
+  }
 }

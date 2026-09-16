@@ -7,6 +7,8 @@ import '../providers/player_provider.dart';
 import '../providers/database_provider.dart';
 import 'player_screen.dart';
 
+import '../providers/epub_providers.dart';
+
 class BookDetailScreen extends ConsumerWidget {
   final Book book;
 
@@ -20,6 +22,37 @@ class BookDetailScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(book.title),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Delete Book'),
+                  content: const Text('Are you sure you want to delete this book? This cannot be undone.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirm == true) {
+                ref.read(libraryProvider.notifier).deleteBook(book.id);
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              }
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
