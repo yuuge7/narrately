@@ -15,21 +15,25 @@ class Chapter {
     required this.wordCount,
   });
 
-  Chapter copyWith({
-    String? id,
-    String? bookId,
-    int? index,
-    String? title,
-    String? textContent,
-    int? wordCount,
-  }) {
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'book_id': bookId,
+      'chapter_index': index,
+      'title': title,
+      'text_content': textContent,
+      'word_count': wordCount,
+    };
+  }
+
+  factory Chapter.fromMap(Map<String, dynamic> map) {
     return Chapter(
-      id: id ?? this.id,
-      bookId: bookId ?? this.bookId,
-      index: index ?? this.index,
-      title: title ?? this.title,
-      textContent: textContent ?? this.textContent,
-      wordCount: wordCount ?? this.wordCount,
+      id: map['id'],
+      bookId: map['book_id'],
+      index: map['chapter_index'],
+      title: map['title'],
+      textContent: map['text_content'],
+      wordCount: map['word_count'],
     );
   }
 }

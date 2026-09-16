@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/book.dart';
 
@@ -21,16 +22,14 @@ class BookCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: book.coverBytes != null
-                  ? Image.memory(
-                      book.coverBytes!,
+              child: book.coverImagePath != null
+                  ? Image.file(
+                      File(book.coverImagePath!),
                       fit: BoxFit.cover,
                     )
                   : Container(
                       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: const Center(
-                        child: Icon(Icons.book, size: 48),
-                      ),
+                      child: const Icon(Icons.book, size: 48),
                     ),
             ),
             Padding(
@@ -40,14 +39,16 @@ class BookCard extends StatelessWidget {
                 children: [
                   Text(
                     book.title,
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context).textTheme.titleSmall,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
                     book.author,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

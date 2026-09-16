@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chapter.dart';
 import '../services/tts_service.dart';
+import 'database_provider.dart';
+import 'epub_providers.dart';
 
 final ttsServiceProvider = Provider<TtsService>((ref) {
   return TtsService();
@@ -34,7 +36,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     _ttsService = ref.watch(ttsServiceProvider);
     
     _ttsService.setCompletionHandler(() {
-      state = state.copyWith(isPlaying: false);
+      _onChapterFinished();
     });
     
     _ttsService.setCancelHandler(() {
@@ -42,6 +44,31 @@ class PlayerNotifier extends Notifier<PlayerState> {
     });
 
     return const PlayerState();
+  }
+  
+  Future<void> _onChapterFinished() async {
+    final chapter = state.currentChapter;
+    if (chapter == null) {
+      state = state.copyWith(isPlaying: false);
+      return;
+    }
+    
+    // Find the next chapter
+    final libraryState = ref.read(libraryProvider);
+    final book = libraryState.books.firstWhere(
+      (b) => b.id == chapter.bookId,
+      orElse: () => throw Exception('Book not found'),
+    );
+    
+    final currentIndex = chapter.index;
+    if (currentIndex + 1 < book.chapters.length) {
+      // Auto-advance
+      final nextChapter = book.chapters[currentIndex + 1];
+      await playChapter(nextChapter);
+    } else {
+      // End of book
+      state = state.copyWith(isPlaying: false);
+    }
   }
 
   Future<void> playChapter(Chapter chapter) async {
@@ -54,6 +81,10 @@ class PlayerNotifier extends Notifier<PlayerState> {
       currentChapter: chapter,
       isPlaying: true,
     );
+    
+    // Save to database for resume functionality
+    final db = ref.read(databaseServiceProvider);
+    await db.savePlaybackState(chapter.bookId, chapter.id);
     
     await _ttsService.speak(chapter.textContent);
   }

@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'chapter.dart';
 
 class Book {
@@ -6,10 +5,7 @@ class Book {
   final String title;
   final String author;
   final String filePath;
-  final String? coverPath;
-  final Uint8List? coverBytes;
-  final int chapterCount;
-  final DateTime importedAt;
+  final String? coverImagePath;
   final List<Chapter> chapters;
 
   const Book({
@@ -17,34 +13,30 @@ class Book {
     required this.title,
     required this.author,
     required this.filePath,
-    this.coverPath,
-    this.coverBytes,
-    required this.chapterCount,
-    required this.importedAt,
+    this.coverImagePath,
     this.chapters = const [],
   });
 
-  Book copyWith({
-    String? id,
-    String? title,
-    String? author,
-    String? filePath,
-    String? coverPath,
-    Uint8List? coverBytes,
-    int? chapterCount,
-    DateTime? importedAt,
-    List<Chapter>? chapters,
-  }) {
+  int get chapterCount => chapters.length;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'title': title,
+      'author': author,
+      'file_path': filePath,
+      'cover_image_path': coverImagePath,
+    };
+  }
+
+  factory Book.fromMap(Map<String, dynamic> map, {List<Chapter> chapters = const []}) {
     return Book(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      author: author ?? this.author,
-      filePath: filePath ?? this.filePath,
-      coverPath: coverPath ?? this.coverPath,
-      coverBytes: coverBytes ?? this.coverBytes,
-      chapterCount: chapterCount ?? this.chapterCount,
-      importedAt: importedAt ?? this.importedAt,
-      chapters: chapters ?? this.chapters,
+      id: map['id'],
+      title: map['title'],
+      author: map['author'],
+      filePath: map['file_path'],
+      coverImagePath: map['cover_image_path'],
+      chapters: chapters,
     );
   }
 }

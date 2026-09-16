@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/book.dart';
 import '../services/epub_parser_service.dart';
 import '../services/file_picker_service.dart';
+import 'database_provider.dart';
 
 final filePickerServiceProvider = Provider<FilePickerService>((ref) {
   return FilePickerService();
@@ -15,25 +17,26 @@ class LibraryState {
   final List<Book> books;
   final bool isImporting;
   final String? errorMessage;
+  final bool isLoading;
 
   const LibraryState({
     this.books = const [],
     this.isImporting = false,
     this.errorMessage,
+    this.isLoading = true,
   });
 
   LibraryState copyWith({
     List<Book>? books,
     bool? isImporting,
     String? errorMessage,
+    bool? isLoading,
   }) {
     return LibraryState(
       books: books ?? this.books,
       isImporting: isImporting ?? this.isImporting,
-      // null is used to clear the error message if not provided explicitly in a specific way,
-      // but typical copyWith pattern requires a way to clear nullable fields.
-      // We will handle clearing error messages through a specific method.
       errorMessage: errorMessage ?? this.errorMessage,
+      isLoading: isLoading ?? this.isLoading,
     );
   }
   
@@ -42,6 +45,7 @@ class LibraryState {
       books: books,
       isImporting: isImporting,
       errorMessage: null,
+      isLoading: isLoading,
     );
   }
 }
@@ -49,7 +53,15 @@ class LibraryState {
 class LibraryNotifier extends Notifier<LibraryState> {
   @override
   LibraryState build() {
+    _init();
     return const LibraryState();
+  }
+
+  Future<void> _init() async {
+    final db = ref.read(databaseServiceProvider);
+    await db.init();
+    final books = await db.getAllBooks();
+    state = state.copyWith(books: books, isLoading: false);
   }
 
   Future<void> importBook() async {
@@ -60,12 +72,10 @@ class LibraryNotifier extends Notifier<LibraryState> {
       final filePath = await picker.pickEpubFile();
       
       if (filePath == null) {
-        // User cancelled picker
         state = state.copyWith(isImporting: false);
         return;
       }
       
-      // Check if already imported
       if (state.books.any((b) => b.filePath == filePath)) {
         state = state.copyWith(
           isImporting: false,
@@ -75,7 +85,11 @@ class LibraryNotifier extends Notifier<LibraryState> {
       }
 
       final parser = ref.read(epubParserServiceProvider);
-      final book = await parser.parseEpub(filePath);
+      final appDocsDir = await getApplicationDocumentsDirectory();
+      final book = await parser.parseEpub(filePath, appDocsDir.path);
+      
+      final db = ref.read(databaseServiceProvider);
+      await db.insertBook(book);
       
       state = state.copyWith(
         isImporting: false,

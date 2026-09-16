@@ -34,14 +34,17 @@ class LibraryScreen extends ConsumerWidget {
               onDismiss: () => ref.read(libraryProvider.notifier).dismissError(),
             ),
           if (state.isImporting) const LinearProgressIndicator(),
-          Expanded(
-            child: state.books.isEmpty
-                ? _buildEmptyState(context, ref, state.isImporting)
-                : _buildGrid(context, state),
-          ),
+          if (state.isLoading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else
+            Expanded(
+              child: state.books.isEmpty
+                  ? _buildEmptyState(context, ref, state.isImporting)
+                  : _buildGrid(context, state),
+            ),
         ],
       ),
-      floatingActionButton: state.books.isEmpty && !state.isImporting
+      floatingActionButton: state.books.isEmpty && !state.isImporting && !state.isLoading
           ? FloatingActionButton.extended(
               onPressed: () => ref.read(libraryProvider.notifier).importBook(),
               icon: const Icon(Icons.add),

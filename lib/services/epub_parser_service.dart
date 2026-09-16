@@ -20,7 +20,7 @@ class EpubParserException implements Exception {
 class EpubParserService {
   final _uuid = const Uuid();
 
-  Future<Book> parseEpub(String filePath) async {
+  Future<Book> parseEpub(String filePath, String appDocsDir) async {
     try {
       var bytes = await File(filePath).readAsBytes();
       bytes = _patchEpubBytesIfNeeded(bytes);
@@ -28,15 +28,19 @@ class EpubParserService {
 
       final title = epubBook.title?.trim().isNotEmpty == true
           ? epubBook.title!
-          : _getFileNameWithoutExtension(filePath);
+          : 'Unknown Title';
 
       final author = epubBook.author?.trim().isNotEmpty == true
           ? epubBook.author!
           : 'Unknown Author';
 
-      Uint8List? coverBytes;
+      String? coverImagePath;
       if (epubBook.coverImage != null) {
-        coverBytes = Uint8List.fromList(img.encodePng(epubBook.coverImage!));
+        final imgBytes = Uint8List.fromList(img.encodePng(epubBook.coverImage!));
+        final coverFileName = '${_uuid.v4()}_cover.png';
+        final coverFile = File('$appDocsDir/$coverFileName');
+        await coverFile.writeAsBytes(imgBytes);
+        coverImagePath = coverFile.path;
       }
 
       final flattenedChapters = _flattenChapters(epubBook.chapters);
@@ -68,13 +72,11 @@ class EpubParserService {
         title: title,
         author: author,
         filePath: filePath,
-        coverBytes: coverBytes,
-        chapterCount: chapters.length,
-        importedAt: DateTime.now(),
+        coverImagePath: coverImagePath,
         chapters: chapters,
       );
     } catch (e) {
-      throw EpubParserException('Failed to parse EPUB file: $e');
+      throw Exception('Failed to parse EPUB file: $e');
     }
   }
 
@@ -87,14 +89,6 @@ class EpubParserService {
       }
     }
     return result;
-  }
-
-  String _getFileNameWithoutExtension(String path) {
-    final name = path.split(Platform.pathSeparator).last;
-    if (name.contains('.')) {
-      return name.substring(0, name.lastIndexOf('.'));
-    }
-    return name;
   }
 
   static String extractPlainText(String? html) {

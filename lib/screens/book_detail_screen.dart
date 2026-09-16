@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/book.dart';
 import '../widgets/chapter_list_item.dart';
 import '../providers/player_provider.dart';
+import '../providers/database_provider.dart';
 import 'player_screen.dart';
 
 class BookDetailScreen extends ConsumerWidget {
@@ -57,9 +59,9 @@ class BookDetailScreen extends ConsumerWidget {
           SizedBox(
             width: 100,
             height: 150,
-            child: book.coverBytes != null
-                ? Image.memory(
-                    book.coverBytes!,
+            child: book.coverImagePath != null
+                ? Image.file(
+                    File(book.coverImagePath!),
                     fit: BoxFit.cover,
                   )
                 : Container(
@@ -90,9 +92,23 @@ class BookDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  onPressed: () {
-                    if (book.chapters.isNotEmpty) {
-                      ref.read(playerProvider.notifier).playChapter(book.chapters.first);
+                  onPressed: () async {
+                    if (book.chapters.isEmpty) return;
+                    
+                    final db = ref.read(databaseServiceProvider);
+                    final lastChapterId = await db.getLastChapterId(book.id);
+                    
+                    var chapterToPlay = book.chapters.first;
+                    if (lastChapterId != null) {
+                      try {
+                        chapterToPlay = book.chapters.firstWhere((c) => c.id == lastChapterId);
+                      } catch (_) {
+                        // ignore if not found
+                      }
+                    }
+                    
+                    ref.read(playerProvider.notifier).playChapter(chapterToPlay);
+                    if (context.mounted) {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const PlayerScreen(),
