@@ -66,6 +66,7 @@ Future<void> initAudioService() async {
       androidNotificationChannelName: 'Audio playback',
       androidNotificationOngoing: true,
       androidStopForegroundOnPause: true,
+      androidNotificationIcon: 'mipmap/ic_launcher',
     ),
   );
 }

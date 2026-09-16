@@ -4,11 +4,14 @@
 *.pyc
 *.swp
 .DS_Store
+Thumbs.db
 .atom/
 .buildlog/
 .history
 .svn/
 migrate_working_dir/
+.env
+.env.*
 
 # IntelliJ related
 *.iml
@@ -31,6 +34,8 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/coverage/
+.fvm/
 
 # Symbolication related
 app.*.symbols
@@ -38,13 +43,32 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# Android / Gradle
 /android/app/debug
 /android/app/profile
 /android/app/release
+**/.gradle/
+**/.kotlin/
+**/.cxx/
+**/local.properties
 
-# Exceptions
+# Build outputs
+*.apk
+*.aab
+
+# Signing secrets - NEVER commit these (back them up privately, see README)
+*.jks
+*.keystore
+key.properties
+**/key.properties
+
+# Debug dumps
+window_dump.xml
+screen.png
+
+# AI assistant files
+.claude/
+
+# Markdown: only the README is published
+*.md
 !README.md
-!SPEC.md
-!AGENTS.md
-!PROMPTS.md

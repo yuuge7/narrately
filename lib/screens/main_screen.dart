@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'library_screen.dart';
 import 'settings_screen.dart';
 
@@ -11,6 +12,16 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestPermissions();
+  }
+
+  Future<void> _requestPermissions() async {
+    await Permission.notification.request();
+  }
 
   final List<Widget> _screens = const [
     LibraryScreen(),
