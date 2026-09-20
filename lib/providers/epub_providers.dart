@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/book.dart';
+import '../services/book_fingerprint.dart';
 import '../services/epub_parser_service.dart';
 import '../services/pdf_parser_service.dart';
 import '../services/file_picker_service.dart';
@@ -75,23 +78,25 @@ class LibraryNotifier extends Notifier<LibraryState> {
     try {
       final picker = ref.read(filePickerServiceProvider);
       final filePath = await picker.pickBookFile();
-      
+
       if (filePath == null) {
         state = state.copyWith(isImporting: false);
         return;
       }
-      
-      if (state.books.any((b) => b.filePath == filePath)) {
+
+      final fingerprint = bookFingerprint(await File(filePath).readAsBytes());
+      final existing = await _findExistingBook(fingerprint);
+      if (existing != null) {
         state = state.copyWith(
           isImporting: false,
-          errorMessage: 'Book is already imported.',
+          errorMessage: '"${existing.title}" is already in your library.',
         );
         return;
       }
 
       final appDocsDir = await getApplicationDocumentsDirectory();
       Book book;
-      
+
       if (filePath.toLowerCase().endsWith('.pdf')) {
         final pdfParser = ref.read(pdfParserServiceProvider);
         book = await pdfParser.parsePdf(filePath);
@@ -99,10 +104,12 @@ class LibraryNotifier extends Notifier<LibraryState> {
         final epubParser = ref.read(epubParserServiceProvider);
         book = await epubParser.parseEpub(filePath, appDocsDir.path);
       }
-      
+
+      book = book.copyWith(contentHash: fingerprint);
+
       final db = ref.read(databaseServiceProvider);
       await db.insertBook(book);
-      
+
       state = state.copyWith(
         isImporting: false,
         books: [...state.books, book],
@@ -115,6 +122,46 @@ class LibraryNotifier extends Notifier<LibraryState> {
     }
   }
   
+  /// Returns the library entry matching [fingerprint], or null.
+  ///
+  /// Books imported before fingerprints existed carry none, so their source
+  /// file is hashed on the spot and the result written back. That happens at
+  /// most once per book, and only during an import, which is already slow.
+  /// A legacy book whose cached source file is gone simply cannot be matched.
+  Future<Book?> _findExistingBook(String fingerprint) async {
+    final db = ref.read(databaseServiceProvider);
+
+    for (final book in state.books) {
+      if (book.contentHash == fingerprint) return book;
+      if (book.contentHash != null) continue;
+
+      try {
+        final file = File(book.filePath);
+        if (!await file.exists()) continue;
+
+        final backfilled = bookFingerprint(await file.readAsBytes());
+        await db.setBookContentHash(book.id, backfilled);
+        _replaceBook(book.copyWith(contentHash: backfilled));
+
+        if (backfilled == fingerprint) return book;
+      } catch (e) {
+        // An unreadable source file just means this book cannot be matched.
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  void _replaceBook(Book updated) {
+    state = state.copyWith(
+      books: [
+        for (final book in state.books)
+          if (book.id == updated.id) updated else book,
+      ],
+    );
+  }
+
   Future<void> deleteBook(String bookId) async {
     try {
       final db = ref.read(databaseServiceProvider);

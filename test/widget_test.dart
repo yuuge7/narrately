@@ -26,6 +26,9 @@ class MockDatabaseService implements DatabaseService {
   Future<void> insertBook(Book book) async {}
   
   @override
+  Future<void> setBookContentHash(String bookId, String contentHash) async {}
+
+  @override
   Future<void> deleteBook(String bookId) async {}
   
   @override

@@ -6,7 +6,7 @@ import '../models/chapter.dart';
 import '../models/user_stats.dart';
 
 class DatabaseService {
-  static const int _schemaVersion = 6;
+  static const int _schemaVersion = 7;
 
   Database? _db;
   Future<Database>? _opening;
@@ -61,7 +61,8 @@ class DatabaseService {
         title TEXT,
         author TEXT,
         file_path TEXT,
-        cover_image_path TEXT
+        cover_image_path TEXT,
+        content_hash TEXT
       )
     ''');
 
@@ -142,6 +143,7 @@ class DatabaseService {
     await _addColumn(db, 'user_stats', 'theme_mode', "TEXT DEFAULT 'system'");
     await _addColumn(db, 'user_stats', 'preferred_font_size', 'REAL DEFAULT 18.0');
     await _addColumn(db, 'playback_state', 'updated_at', 'INTEGER DEFAULT 0');
+    await _addColumn(db, 'books', 'content_hash', 'TEXT');
   }
 
   Future<void> _addColumn(
@@ -197,6 +199,18 @@ class DatabaseService {
         );
       }
     });
+  }
+
+  /// Fills in the fingerprint of a book that predates it, so it takes part in
+  /// duplicate detection from then on.
+  Future<void> setBookContentHash(String bookId, String contentHash) async {
+    final db = await _database;
+    await db.update(
+      'books',
+      {'content_hash': contentHash},
+      where: 'id = ?',
+      whereArgs: [bookId],
+    );
   }
 
   Future<void> deleteBook(String bookId) async {
