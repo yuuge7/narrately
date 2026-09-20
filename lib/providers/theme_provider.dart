@@ -24,10 +24,8 @@ class ThemeNotifier extends Notifier<ThemeMode> {
     final db = ref.read(databaseServiceProvider);
     await db.updateUserStats(updatedStats);
     
-    // We update stats provider to trigger the rebuild
-    // Actually wait, statsProvider updates its own state, but we don't have a method to just update it there.
-    // Let's just force a re-init or use a local state.
-    // In StatsProvider we should probably just have a method to update stats.
+    // build() watches statsProvider, so pushing the new stats through it is
+    // what re-derives the ThemeMode.
     ref.read(statsProvider.notifier).updateStats(updatedStats);
   }
 }

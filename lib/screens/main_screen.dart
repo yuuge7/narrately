@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'library_screen.dart';
+import 'progress_screen.dart';
 import 'settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -25,6 +26,7 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _screens = const [
     LibraryScreen(),
+    ProgressScreen(),
     SettingsScreen(),
   ];
 
@@ -46,6 +48,10 @@ class _MainScreenState extends State<MainScreen> {
           NavigationDestination(
             icon: Icon(Icons.library_books),
             label: 'Library',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.insights_rounded),
+            label: 'Progress',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings),

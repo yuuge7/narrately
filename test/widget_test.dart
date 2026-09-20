@@ -11,21 +11,49 @@ import 'package:narrately/models/user_stats.dart';
 class MockDatabaseService implements DatabaseService {
   @override
   Future<void> init() async {}
+  
   @override
-  Future<List<Book>> getAllBooks() async => [];
-  @override
-  Future<String?> getLastChapterId(String bookId) async => null;
-  @override
-  Future<void> insertBook(Book book) async {}
-  @override
-  Future<void> deleteBook(String bookId) async {}
-
-  @override
-  Future<void> savePlaybackState(String bookId, String chapterId) async {}
-  @override
-  Future<UserStats> getUserStats() async => UserStats(lastListenedDate: DateTime.now().toIso8601String().split('T')[0]);
+  Future<UserStats> getUserStats() async {
+    return UserStats(
+      lastListenedDate: DateTime.now().toIso8601String().split('T')[0],
+    );
+  }
+  
   @override
   Future<void> updateUserStats(UserStats stats) async {}
+  
+  @override
+  Future<void> insertBook(Book book) async {}
+  
+  @override
+  Future<void> deleteBook(String bookId) async {}
+  
+  @override
+  Future<List<Book>> getAllBooks() async => [];
+  
+  @override
+  Future<void> savePlaybackState(String bookId, String chapterId, int chunkIndex) async {}
+  
+  @override
+  Future<Map<String, dynamic>?> getPlaybackState(String bookId) async => null;
+  
+  @override
+  Future<Map<String, dynamic>?> getMostRecentPlayback() async => null;
+  
+  @override
+  Future<void> saveListeningHistory(String dateStr, int seconds, bool goalReached) async {}
+  
+  @override
+  Future<List<Map<String, dynamic>>> getListeningHistory(int limit) async => [];
+  
+  @override
+  Future<void> addBookmark(String id, String bookId, String chapterId, int chunkIndex, String note) async {}
+  
+  @override
+  Future<List<Map<String, dynamic>>> getBookmarks(String bookId) async => [];
+  
+  @override
+  Future<void> deleteBookmark(String id) async {}
 }
 
 void main() {

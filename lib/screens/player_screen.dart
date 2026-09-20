@@ -5,6 +5,9 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../providers/player_provider.dart';
 import '../providers/stats_provider.dart';
 import '../providers/epub_providers.dart';
+import '../providers/bookmark_provider.dart';
+import '../models/book.dart';
+import '../models/chapter.dart';
 
 class PlayerScreen extends ConsumerStatefulWidget {
   const PlayerScreen({super.key});
@@ -22,6 +25,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final playerState = ref.watch(playerProvider);
     final notifier = ref.read(playerProvider.notifier);
     final chapter = playerState.currentChapter;
+    final fontSize = ref.watch(statsProvider).stats?.preferredFontSize ?? 18.0;
 
     ref.listen(statsProvider, (previous, next) {
       if (previous?.stats?.goalReachedToday == false &&
@@ -58,6 +62,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bookmark_add_outlined),
+            tooltip: 'Add Bookmark',
+            onPressed: chapter == null || playerState.currentChunks.isEmpty
+                ? null
+                : () => _showAddBookmarkDialog(context, ref, playerState),
+          ),
           IconButton(
             icon: Icon(
               Icons.timer, 
@@ -103,6 +114,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                               child: Text(
                                 playerState.currentChunks[index],
                                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                  fontSize: fontSize,
                                   height: 1.6,
                                   color: isActive 
                                       ? Theme.of(context).colorScheme.onSurface
@@ -123,7 +135,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     children: [
                       if (playerState.currentChunks.isNotEmpty)
                         LinearProgressIndicator(
-                          value: playerState.currentChunkIndex / playerState.currentChunks.length,
+                          value: (playerState.currentChunkIndex + 1) /
+                              playerState.currentChunks.length,
                         ),
                       const SizedBox(height: 16),
                       Row(
@@ -176,15 +189,57 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
   }
 
-  Widget _buildChapterDrawer(BuildContext context, WidgetRef ref, PlayerState state) {
-    if (state.currentChapter == null) return const Drawer();
-    
-    final libraryState = ref.read(libraryProvider);
-    final book = libraryState.books.firstWhere(
-      (b) => b.id == state.currentChapter!.bookId,
-      orElse: () => throw Exception('Book not found'),
+  Book? _bookFor(WidgetRef ref, Chapter chapter) {
+    for (final book in ref.read(libraryProvider).books) {
+      if (book.id == chapter.bookId) return book;
+    }
+    return null;
+  }
+
+  Future<void> _showAddBookmarkDialog(
+    BuildContext context,
+    WidgetRef ref,
+    PlayerState state,
+  ) async {
+    final chapter = state.currentChapter;
+    if (chapter == null) return;
+
+    final note = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _AddBookmarkDialog(
+        subtitle: '${chapter.title} • part ${state.currentChunkIndex + 1}',
+      ),
     );
-    
+
+    if (note == null) return;
+
+    await ref.read(bookmarkNotifierProvider.notifier).addBookmark(
+          chapter.bookId,
+          chapter.id,
+          state.currentChunkIndex,
+          note.trim(),
+        );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bookmark saved'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _buildChapterDrawer(BuildContext context, WidgetRef ref, PlayerState state) {
+    final current = state.currentChapter;
+    if (current == null) return const Drawer();
+
+    final book = _bookFor(ref, current);
+    if (book == null) {
+      return const Drawer(
+        child: Center(child: Text('Book no longer available')),
+      );
+    }
+
     return Drawer(
       child: Column(
         children: [
@@ -205,7 +260,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               itemCount: book.chapters.length,
               itemBuilder: (context, index) {
                 final c = book.chapters[index];
-                final isCurrent = c.id == state.currentChapter!.id;
+                final isCurrent = c.id == current.id;
                 
                 return ListTile(
                   title: Text(
@@ -215,7 +270,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   selected: isCurrent,
                   onTap: () {
                     Navigator.of(context).pop();
-                    ref.read(playerProvider.notifier).playChapter(c);
+                    ref
+                        .read(playerProvider.notifier)
+                        .playChapter(c, forceRestart: !isCurrent);
                   },
                 );
               },
@@ -316,10 +373,18 @@ class _VoiceSettingsSheetState extends State<_VoiceSettingsSheet> {
   @override
   void initState() {
     super.initState();
-    _speed = widget.state.playbackSpeed;
-    _pitch = widget.state.playbackPitch;
+    _speed = widget.state.playbackSpeed.clamp(0.5, 2.0);
+    _pitch = widget.state.playbackPitch.clamp(0.5, 2.0);
+
     if (widget.state.voiceName != null) {
-      _selectedVoiceIdentifier = '${widget.state.voiceName}|${widget.state.voiceLocale}';
+      final saved = '${widget.state.voiceName}|${widget.state.voiceLocale}';
+      // DropdownButton asserts if its value is not one of its items, which is
+      // what happens when the saved voice is no longer installed.
+      final available =
+          widget.voices.map((v) => '${v['name']}|${v['locale']}').toSet();
+      if (available.contains(saved)) {
+        _selectedVoiceIdentifier = saved;
+      }
     }
   }
 
@@ -408,7 +473,7 @@ class _SleepTimerCountdownState extends State<_SleepTimerCountdown> {
   @override
   void initState() {
     super.initState();
-    _updateRemaining();
+    _remaining = widget.endTime.difference(DateTime.now());
     _timer = Timer.periodic(const Duration(seconds: 1), (t) => _updateRemaining());
   }
   
@@ -416,15 +481,22 @@ class _SleepTimerCountdownState extends State<_SleepTimerCountdown> {
   void didUpdateWidget(covariant _SleepTimerCountdown oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.endTime != widget.endTime) {
+      _timer ??= Timer.periodic(
+        const Duration(seconds: 1),
+        (t) => _updateRemaining(),
+      );
       _updateRemaining();
     }
   }
 
   void _updateRemaining() {
-    final now = DateTime.now();
-    setState(() {
-      _remaining = widget.endTime.difference(now);
-    });
+    if (!mounted) return;
+    final remaining = widget.endTime.difference(DateTime.now());
+    if (remaining.isNegative) {
+      _timer?.cancel();
+      _timer = null;
+    }
+    setState(() => _remaining = remaining);
   }
 
   @override
@@ -450,6 +522,62 @@ class _SleepTimerCountdownState extends State<_SleepTimerCountdown> {
           style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
         ),
       ),
+    );
+  }
+}
+
+class _AddBookmarkDialog extends StatefulWidget {
+  final String subtitle;
+
+  const _AddBookmarkDialog({required this.subtitle});
+
+  @override
+  State<_AddBookmarkDialog> createState() => _AddBookmarkDialogState();
+}
+
+class _AddBookmarkDialogState extends State<_AddBookmarkDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add Bookmark'),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.subtitle, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            maxLength: 120,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Note (optional)',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

@@ -74,8 +74,6 @@ class LibraryNotifier extends Notifier<LibraryState> {
     
     try {
       final picker = ref.read(filePickerServiceProvider);
-      // Wait, does filePickerServiceProvider support PDF?
-      // I should update filePickerServiceProvider too.
       final filePath = await picker.pickBookFile();
       
       if (filePath == null) {

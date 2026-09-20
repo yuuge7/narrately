@@ -5,19 +5,23 @@ import 'database_provider.dart';
 class StatsState {
   final UserStats? stats;
   final bool isLoading;
+  final Map<String, bool> history; // Date string -> goalReached
 
   const StatsState({
     this.stats,
     this.isLoading = true,
+    this.history = const {},
   });
 
   StatsState copyWith({
     UserStats? stats,
     bool? isLoading,
+    Map<String, bool>? history,
   }) {
     return StatsState(
       stats: stats ?? this.stats,
       isLoading: isLoading ?? this.isLoading,
+      history: history ?? this.history,
     );
   }
 }
@@ -29,33 +33,53 @@ class StatsNotifier extends Notifier<StatsState> {
     return const StatsState();
   }
 
+  static String _dayKey(DateTime date) =>
+      DateTime(date.year, date.month, date.day).toIso8601String().split('T')[0];
+
   Future<void> _init() async {
     final db = ref.read(databaseServiceProvider);
     await db.init();
     var stats = await db.getUserStats();
 
-    final todayStr = DateTime.now().toIso8601String().split('T')[0];
+    final now = DateTime.now();
+    final todayStr = _dayKey(now);
+    final yesterdayStr = _dayKey(now.subtract(const Duration(days: 1)));
+
+    final historyData = await db.getListeningHistory(30);
+    final Map<String, bool> historyMap = {};
+    for (final row in historyData) {
+      historyMap[row['date'] as String] = (row['goal_reached'] as int) == 1;
+    }
+
+    final reachedToday = historyMap[todayStr] ?? false;
+    final reachedYesterday = historyMap[yesterdayStr] ?? false;
+
+    // The streak survives only if the goal was met today or yesterday. Reading
+    // this from listening_history instead of lastListenedDate is what makes a
+    // missed day actually break the chain: lastListenedDate is bumped on every
+    // launch, so a day with no listening used to look like an unbroken run.
+    var updated = stats;
+    if (!reachedToday && !reachedYesterday && stats.currentStreak > 0) {
+      updated = updated.copyWith(currentStreak: 0);
+    }
+
+    // New day: today's counters start over.
     if (stats.lastListenedDate != todayStr) {
-      final lastDate = DateTime.parse(stats.lastListenedDate);
-      final today = DateTime.parse(todayStr);
-      final difference = today.difference(lastDate).inDays;
-
-      int newStreak = stats.currentStreak;
-      // If they missed yesterday (difference > 1), streak resets.
-      if (difference > 1) {
-        newStreak = 0;
-      }
-
-      stats = stats.copyWith(
-        currentStreak: newStreak,
+      updated = updated.copyWith(
         lastListenedDate: todayStr,
         secondsListenedToday: 0,
         goalReachedToday: false,
       );
-      await db.updateUserStats(stats);
     }
 
-    state = state.copyWith(stats: stats, isLoading: false);
+    if (!identical(updated, stats)) {
+      await db.updateUserStats(updated);
+      stats = updated;
+    }
+
+    historyMap[todayStr] = stats.goalReachedToday;
+
+    state = state.copyWith(stats: stats, isLoading: false, history: historyMap);
   }
 
   Future<void> addListenTime(int seconds) async {
@@ -64,9 +88,7 @@ class StatsNotifier extends Notifier<StatsState> {
     var stats = state.stats!;
     final todayStr = DateTime.now().toIso8601String().split('T')[0];
     
-    // Check rollover while listening
     if (stats.lastListenedDate != todayStr) {
-      // Just re-init to handle rollover safely
       await _init();
       stats = state.stats!;
     }
@@ -91,15 +113,32 @@ class StatsNotifier extends Notifier<StatsState> {
       goalReachedToday: goalReachedToday,
     );
     
-    state = state.copyWith(stats: updatedStats);
-    
-    // Save to DB
     final db = ref.read(databaseServiceProvider);
     await db.updateUserStats(updatedStats);
+    await db.saveListeningHistory(todayStr, newSeconds, goalReachedToday);
+    
+    final newHistory = Map<String, bool>.from(state.history);
+    newHistory[todayStr] = goalReachedToday;
+    
+    state = state.copyWith(stats: updatedStats, history: newHistory);
   }
   
+  Future<void> setDailyGoal(int seconds) async {
+    if (state.stats == null) return;
+    final updatedStats = state.stats!.copyWith(dailyGoalSeconds: seconds);
+    await ref.read(databaseServiceProvider).updateUserStats(updatedStats);
+    state = state.copyWith(stats: updatedStats);
+  }
+
   void updateStats(UserStats newStats) {
     state = state.copyWith(stats: newStats);
+  }
+
+  Future<void> setFontSize(double size) async {
+    if (state.stats == null) return;
+    final updatedStats = state.stats!.copyWith(preferredFontSize: size);
+    await ref.read(databaseServiceProvider).updateUserStats(updatedStats);
+    state = state.copyWith(stats: updatedStats);
   }
 }
 

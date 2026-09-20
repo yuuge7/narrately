@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/user_stats.dart';
 import '../providers/epub_providers.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/book_card.dart';
@@ -71,10 +72,13 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatsHeader(BuildContext context, dynamic stats) {
-    final progress = stats.secondsListenedToday / stats.dailyGoalSeconds;
+  Widget _buildStatsHeader(BuildContext context, UserStats stats) {
+    final goalSeconds = stats.dailyGoalSeconds;
+    final progress = goalSeconds > 0
+        ? (stats.secondsListenedToday / goalSeconds).clamp(0.0, 1.0)
+        : 0.0;
     final minsListened = stats.secondsListenedToday ~/ 60;
-    final minsGoal = stats.dailyGoalSeconds ~/ 60;
+    final minsGoal = goalSeconds ~/ 60;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -100,7 +104,7 @@ class LibraryScreen extends ConsumerWidget {
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
-                  value: progress > 1.0 ? 1.0 : progress,
+                  value: progress,
                   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   color: stats.goalReachedToday ? Colors.green : Theme.of(context).colorScheme.primary,
                   strokeWidth: 3,

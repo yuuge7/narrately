@@ -17,23 +17,14 @@ class TtsService {
     _flutterTts.setCompletionHandler(handler);
   }
   
-  void setCancelHandler(VoidCallback handler) {
-    _flutterTts.setCancelHandler(handler);
+  void setErrorHandler(void Function(dynamic message) handler) {
+    _flutterTts.setErrorHandler(handler);
   }
 
   Future<void> speak(String text) async {
     if (text.isNotEmpty) {
       await _flutterTts.speak(text);
     }
-  }
-
-  Future<void> pause() async {
-    // flutter_tts pause is mostly supported on iOS/Web/macOS out of the box,
-    // On Android, pause() only works if synthesized to file or specific engines,
-    // but flutter_tts 4.0+ adds stop() which halts it. We will call pause() and
-    // see if it works, otherwise stop() is the reliable fallback.
-    // However, pause() might not be perfectly supported by all Android TTS engines.
-    await _flutterTts.pause();
   }
 
   Future<void> stop() async {
