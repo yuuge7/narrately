@@ -21,6 +21,15 @@ class TtsService {
     _flutterTts.setErrorHandler(handler);
   }
 
+  /// Reports the word the engine is speaking, as offsets into the text passed
+  /// to [speak]. Android only fires this from API 26 on, so a device below
+  /// that simply never highlights a word.
+  void setProgressHandler(
+    void Function(String text, int start, int end, String word) handler,
+  ) {
+    _flutterTts.setProgressHandler(handler);
+  }
+
   Future<void> speak(String text) async {
     if (text.isNotEmpty) {
       await _flutterTts.speak(text);

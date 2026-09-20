@@ -8,6 +8,7 @@ import '../providers/epub_providers.dart';
 import '../providers/bookmark_provider.dart';
 import '../models/book.dart';
 import '../models/chapter.dart';
+import 'book_search_screen.dart';
 
 class PlayerScreen extends ConsumerStatefulWidget {
   const PlayerScreen({super.key});
@@ -70,9 +71,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 : () => _showAddBookmarkDialog(context, ref, playerState),
           ),
           IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Search in book',
+            onPressed: chapter == null
+                ? null
+                : () {
+                    final book = _bookFor(ref, chapter);
+                    if (book == null) return;
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => BookSearchScreen(book: book),
+                      ),
+                    );
+                  },
+          ),
+          IconButton(
             icon: Icon(
-              Icons.timer, 
-              color: playerState.sleepTimerEndTime != null ? Colors.orange : null,
+              Icons.timer,
+              color: playerState.hasSleepTimer ? Colors.orange : null,
             ),
             tooltip: 'Sleep Timer',
             onPressed: () => _showSleepTimerDialog(context, notifier, playerState),
@@ -106,22 +122,31 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                           itemCount: playerState.currentChunks.length,
                           itemBuilder: (context, index) {
                             final isActive = index == playerState.currentChunkIndex;
-                            return Container(
-                              color: isActive 
-                                ? Theme.of(context).colorScheme.primaryContainer.withAlpha(100) 
-                                : Colors.transparent,
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                              child: Text(
-                                playerState.currentChunks[index],
-                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            final text = playerState.currentChunks[index].text;
+                            final style = Theme.of(context).textTheme.bodyLarge?.copyWith(
                                   fontSize: fontSize,
                                   height: 1.6,
-                                  color: isActive 
+                                  color: isActive
                                       ? Theme.of(context).colorScheme.onSurface
                                       : Theme.of(context).colorScheme.onSurface.withAlpha(150),
                                   fontWeight: isActive ? FontWeight.w500 : FontWeight.normal,
-                                ),
-                              ),
+                                );
+
+                            return Container(
+                              color: isActive
+                                ? Theme.of(context).colorScheme.primaryContainer.withAlpha(100)
+                                : Colors.transparent,
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                              // Only the sentence being read watches the word
+                              // position, so a word change does not rebuild
+                              // every other line in the chapter.
+                              child: isActive
+                                  ? _ActiveChunkText(
+                                      text: text,
+                                      chunkIndex: index,
+                                      style: style,
+                                    )
+                                  : Text(text, style: style),
                             );
                           },
                           itemScrollController: _itemScrollController,
@@ -213,10 +238,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     if (note == null) return;
 
+    final chunks = state.currentChunks;
+    final offset = chunks.isEmpty
+        ? 0
+        : chunks[state.currentChunkIndex.clamp(0, chunks.length - 1)].start;
+
     await ref.read(bookmarkNotifierProvider.notifier).addBookmark(
           chapter.bookId,
           chapter.id,
           state.currentChunkIndex,
+          offset,
           note.trim(),
         );
 
@@ -296,9 +327,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               ),
               ListTile(
                 title: const Text('Off'),
-                trailing: state.sleepTimerEndTime == null ? const Icon(Icons.check) : null,
+                trailing: !state.hasSleepTimer ? const Icon(Icons.check) : null,
                 onTap: () {
                   notifier.setSleepTimer(0);
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: const Text('End of chapter'),
+                subtitle: const Text('Finishes the chapter, then stops'),
+                trailing: state.stopAtChapterEnd ? const Icon(Icons.check) : null,
+                onTap: () {
+                  notifier.sleepAtChapterEnd();
                   Navigator.pop(context);
                 },
               ),
@@ -452,6 +492,53 @@ class _VoiceSettingsSheetState extends State<_VoiceSettingsSheet> {
             ),
           
           const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+}
+
+/// The sentence being narrated, with the engine's current word picked out.
+///
+/// Android only reports word boundaries from API 26 on, and never for a voice
+/// that does not support it, so this degrades to plain text rather than
+/// depending on the callback arriving.
+class _ActiveChunkText extends ConsumerWidget {
+  final String text;
+  final int chunkIndex;
+  final TextStyle? style;
+
+  const _ActiveChunkText({
+    required this.text,
+    required this.chunkIndex,
+    required this.style,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final word = ref.watch(spokenWordProvider);
+
+    final inRange = word != null &&
+        word.chunkIndex == chunkIndex &&
+        word.start >= 0 &&
+        word.end <= text.length &&
+        word.start < word.end;
+
+    if (!inRange) return Text(text, style: style);
+
+    return Text.rich(
+      TextSpan(
+        style: style,
+        children: [
+          TextSpan(text: text.substring(0, word.start)),
+          TextSpan(
+            text: text.substring(word.start, word.end),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          TextSpan(text: text.substring(word.end)),
         ],
       ),
     );

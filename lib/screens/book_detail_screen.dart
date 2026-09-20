@@ -8,6 +8,9 @@ import '../providers/player_provider.dart';
 import '../providers/database_provider.dart';
 import 'player_screen.dart';
 import '../providers/epub_providers.dart';
+import '../providers/library_progress_provider.dart';
+import '../services/reading_progress.dart';
+import 'book_search_screen.dart';
 import 'bookmarks_screen.dart';
 
 class BookDetailScreen extends ConsumerWidget {
@@ -28,6 +31,17 @@ class BookDetailScreen extends ConsumerWidget {
             pinned: true,
             actions: [
               IconButton(
+                icon: const Icon(Icons.search),
+                tooltip: 'Search in book',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => BookSearchScreen(book: book),
+                    ),
+                  );
+                },
+              ),
+              IconButton(
                 icon: const Icon(Icons.bookmarks_rounded),
                 onPressed: () {
                   Navigator.of(context).push(
@@ -45,7 +59,7 @@ class BookDetailScreen extends ConsumerWidget {
             ),
           ),
           SliverToBoxAdapter(
-            child: _buildBookInfo(context),
+            child: _buildBookInfo(context, ref),
           ),
           SliverToBoxAdapter(
             child: Padding(
@@ -67,8 +81,10 @@ class BookDetailScreen extends ConsumerWidget {
                     final playbackState = await db.getPlaybackState(book.id);
                     
                     int startChunkIndex = 0;
+                    int? startCharOffset;
                     if (playbackState != null && playbackState['last_chapter_id'] == chapter.id) {
-                      startChunkIndex = playbackState['last_position_words'] as int;
+                      startChunkIndex = playbackState['last_position_words'] as int? ?? 0;
+                      startCharOffset = playbackState['last_position_chars'] as int?;
                     }
 
                     // Check if it's already the current chapter to avoid forcing a restart if we just want to open the screen
@@ -76,8 +92,9 @@ class BookDetailScreen extends ConsumerWidget {
                     final isSameChapter = currentPlayerChapter?.id == chapter.id;
 
                     await ref.read(playerProvider.notifier).playChapter(
-                      chapter, 
-                      startingChunkIndex: startChunkIndex, 
+                      chapter,
+                      startingChunkIndex: startChunkIndex,
+                      startingCharOffset: startCharOffset,
                       forceRestart: !isSameChapter, // Only force restart if it's a different chapter
                       autoPlay: false,
                     );
@@ -114,7 +131,11 @@ class BookDetailScreen extends ConsumerWidget {
       fit: StackFit.expand,
       children: [
         if (book.coverImagePath != null) ...[
-          Image.file(File(book.coverImagePath!), fit: BoxFit.cover),
+          Image.file(
+            File(book.coverImagePath!),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+          ),
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
@@ -149,11 +170,13 @@ class BookDetailScreen extends ConsumerWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: book.coverImagePath != null
-                  ? Image.file(File(book.coverImagePath!), fit: BoxFit.cover)
-                  : Container(
-                      color: Theme.of(context).colorScheme.secondaryContainer,
-                      child: Icon(Icons.menu_book_rounded, size: 64, color: Theme.of(context).colorScheme.onSecondaryContainer),
-                    ),
+                  ? Image.file(
+                      File(book.coverImagePath!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          _coverPlaceholder(context),
+                    )
+                  : _coverPlaceholder(context),
             ),
           ),
         ),
@@ -161,7 +184,30 @@ class BookDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildBookInfo(BuildContext context) {
+  Widget _coverPlaceholder(BuildContext context) {
+    return Container(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Icon(
+        Icons.menu_book_rounded,
+        size: 64,
+        color: Theme.of(context).colorScheme.onSecondaryContainer,
+      ),
+    );
+  }
+
+  String _infoLine(BookProgress progress) {
+    final chapters = '${book.chapterCount} chapters';
+    if (progress.finished) return '$chapters · finished';
+    if (progress.started) {
+      return '$chapters · ${(progress.fraction * 100).round()}% read';
+    }
+    return chapters;
+  }
+
+  Widget _buildBookInfo(BuildContext context, WidgetRef ref) {
+    final progress =
+        ref.watch(libraryProgressProvider).value?[book.id] ?? BookProgress.none;
+
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -188,10 +234,20 @@ class BookDetailScreen extends ConsumerWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              '${book.chapterCount} chapters',
+              _infoLine(progress),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
+          if (progress.started) ...[
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress.fraction,
+                minHeight: 6,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -234,22 +290,28 @@ class BookDetailScreen extends ConsumerWidget {
     
     var chapterToPlay = book.chapters.first;
     int chunkIndex = 0;
-    
+    int? charOffset;
+
     if (playbackState != null) {
       final lastChapterId = playbackState['last_chapter_id'] as String?;
       final lastChunkIndex = playbackState['last_position_words'] as int?;
-      
+
       if (lastChapterId != null) {
         try {
           chapterToPlay = book.chapters.firstWhere((c) => c.id == lastChapterId);
           chunkIndex = lastChunkIndex ?? 0;
+          charOffset = playbackState['last_position_chars'] as int?;
         } catch (_) {
           // ignore if not found
         }
       }
     }
-    
-    ref.read(playerProvider.notifier).playChapter(chapterToPlay, startingChunkIndex: chunkIndex);
+
+    ref.read(playerProvider.notifier).playChapter(
+          chapterToPlay,
+          startingChunkIndex: chunkIndex,
+          startingCharOffset: charOffset,
+        );
     if (context.mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(

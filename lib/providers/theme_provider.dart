@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'stats_provider.dart';
-import 'database_provider.dart';
 
 class ThemeNotifier extends Notifier<ThemeMode> {
   @override
@@ -17,16 +16,10 @@ class ThemeNotifier extends Notifier<ThemeMode> {
   }
 
   Future<void> setThemeMode(String mode) async {
-    final statsState = ref.read(statsProvider);
-    if (statsState.stats == null) return;
-    
-    final updatedStats = statsState.stats!.copyWith(themeMode: mode);
-    final db = ref.read(databaseServiceProvider);
-    await db.updateUserStats(updatedStats);
-    
-    // build() watches statsProvider, so pushing the new stats through it is
-    // what re-derives the ThemeMode.
-    ref.read(statsProvider.notifier).updateStats(updatedStats);
+    // StatsNotifier owns the user_stats row; writing it from here with a
+    // cached copy would revert whatever the player had saved since. build()
+    // watches statsProvider, so its update is what re-derives the ThemeMode.
+    await ref.read(statsProvider.notifier).setThemeMode(mode);
   }
 }
 

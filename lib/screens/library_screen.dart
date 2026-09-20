@@ -1,20 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/book.dart';
 import '../models/user_stats.dart';
 import '../providers/epub_providers.dart';
+import '../providers/library_progress_provider.dart';
 import '../providers/stats_provider.dart';
+import '../services/library_sort.dart';
+import '../services/reading_progress.dart';
 import '../widgets/book_card.dart';
 import '../widgets/error_banner.dart';
 import 'book_detail_screen.dart';
 
-class LibraryScreen extends ConsumerWidget {
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  bool _searching = false;
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _searching = !_searching;
+      if (!_searching) {
+        _searchController.clear();
+        _query = '';
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(libraryProvider);
     final statsState = ref.watch(statsProvider);
+    final sort = librarySortFromKey(statsState.stats?.librarySort);
+    final progress = ref.watch(libraryProgressProvider).value ?? const {};
 
     ref.listen(statsProvider, (previous, next) {
       if (previous?.stats?.goalReachedToday == false &&
@@ -28,18 +59,49 @@ class LibraryScreen extends ConsumerWidget {
       }
     });
 
+    // An import that worked is not an error, so it gets a snack bar rather
+    // than the red banner.
+    ref.listen(libraryProvider, (previous, next) {
+      final notice = next.noticeMessage;
+      if (notice == null || notice == previous?.noticeMessage) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(notice), behavior: SnackBarBehavior.floating),
+      );
+      ref.read(libraryProvider.notifier).dismissNotice();
+    });
+
+    final visible = sortBooks(searchBooks(state.books, _query), sort, progress);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Narrately'),
+        title: _searching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search your library',
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) => setState(() => _query = value),
+              )
+            : const Text('Narrately'),
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Import Book',
-            onPressed: state.isImporting
-                ? null
-                : () => ref.read(libraryProvider.notifier).importBook(),
+            icon: Icon(_searching ? Icons.close : Icons.search),
+            tooltip: _searching ? 'Close search' : 'Search',
+            onPressed: _toggleSearch,
           ),
+          if (!_searching) ...[
+            _SortButton(current: sort),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Import Books',
+              onPressed: state.isImporting
+                  ? null
+                  : () => ref.read(libraryProvider.notifier).importBooks(),
+            ),
+          ],
         ],
       ),
       body: Column(
@@ -51,24 +113,46 @@ class LibraryScreen extends ConsumerWidget {
               message: state.errorMessage!,
               onDismiss: () => ref.read(libraryProvider.notifier).dismissError(),
             ),
-          if (state.isImporting) const LinearProgressIndicator(),
+          if (state.isImporting) ...[
+            const LinearProgressIndicator(),
+            if (state.importStatus != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        state.importStatus!,
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
           if (state.isLoading)
             const Expanded(child: Center(child: CircularProgressIndicator()))
           else
             Expanded(
               child: state.books.isEmpty
-                  ? _buildEmptyState(context, ref, state.isImporting)
-                  : _buildGrid(context, state),
+                  ? _buildEmptyState(context, state.isImporting)
+                  : visible.isEmpty
+                      ? _buildNoMatches(context)
+                      : _buildGrid(context, visible, progress),
             ),
         ],
       ),
-      floatingActionButton: state.books.isEmpty && !state.isImporting && !state.isLoading
-          ? FloatingActionButton.extended(
-              onPressed: () => ref.read(libraryProvider.notifier).importBook(),
-              icon: const Icon(Icons.add),
-              label: const Text('Import Book'),
-            )
-          : null,
+      floatingActionButton:
+          state.books.isEmpty && !state.isImporting && !state.isLoading
+              ? FloatingActionButton.extended(
+                  onPressed: () =>
+                      ref.read(libraryProvider.notifier).importBooks(),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Import Books'),
+                )
+              : null,
     );
   }
 
@@ -117,7 +201,7 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, WidgetRef ref, bool isImporting) {
+  Widget _buildEmptyState(BuildContext context, bool isImporting) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -138,8 +222,9 @@ class LibraryScreen extends ConsumerWidget {
             const SizedBox(height: 8),
             Text(
               isImporting
-                  ? 'Importing and parsing your book...'
-                  : 'Tap the + button to import an EPUB or PDF file from your device.',
+                  ? 'Importing and parsing your books...'
+                  : 'Tap the + button to import EPUB or PDF files from your device. '
+                      'You can pick several at once.',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -149,7 +234,24 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildGrid(BuildContext context, LibraryState state) {
+  Widget _buildNoMatches(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Text(
+          'No book matches "$_query".',
+          style: Theme.of(context).textTheme.bodyLarge,
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGrid(
+    BuildContext context,
+    List<Book> books,
+    Map<String, BookProgress> progress,
+  ) {
     return GridView.builder(
       padding: const EdgeInsets.all(16.0),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -158,11 +260,12 @@ class LibraryScreen extends ConsumerWidget {
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
-      itemCount: state.books.length,
+      itemCount: books.length,
       itemBuilder: (context, index) {
-        final book = state.books[index];
+        final book = books[index];
         return BookCard(
           book: book,
+          progress: progress[book.id] ?? BookProgress.none,
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -172,6 +275,41 @@ class LibraryScreen extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _SortButton extends ConsumerWidget {
+  final LibrarySort current;
+
+  const _SortButton({required this.current});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopupMenuButton<LibrarySort>(
+      icon: const Icon(Icons.sort),
+      tooltip: 'Sort',
+      initialValue: current,
+      onSelected: (sort) => ref
+          .read(statsProvider.notifier)
+          .setLibrarySort(librarySortKey(sort)),
+      itemBuilder: (context) => [
+        for (final sort in LibrarySort.values)
+          PopupMenuItem(
+            value: sort,
+            child: Row(
+              children: [
+                Icon(
+                  sort == current ? Icons.check : null,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Text(librarySortLabel(sort)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

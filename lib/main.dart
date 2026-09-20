@@ -1,3 +1,4 @@
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,12 @@ Future<void> main() async {
   ]);
   
   await initAudioService();
+
+  // Declares the app as spoken audio. `willPauseWhenDucked` matters for a
+  // book: a ducked narration is quiet enough to lose the thread but loud
+  // enough to distract, so an interruption pauses it instead.
+  final session = await AudioSession.instance;
+  await session.configure(const AudioSessionConfiguration.speech());
 
   runApp(
     const ProviderScope(

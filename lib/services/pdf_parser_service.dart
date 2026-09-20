@@ -4,6 +4,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:path/path.dart' as p;
 import '../models/book.dart';
 import '../models/chapter.dart';
+import 'book_parse_exception.dart';
 import 'epub_parser_service.dart';
 
 class PdfParserService {
@@ -102,7 +103,9 @@ class PdfParserService {
         chapters: chapters,
       );
     } catch (e) {
-      throw Exception('Failed to parse PDF file: $e');
+      throw BookParseException(
+        'This PDF could not be read: ${describeError(e)}',
+      );
     }
   }
   

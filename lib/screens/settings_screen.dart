@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../providers/backup_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/stats_provider.dart';
 
@@ -10,7 +11,21 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeProvider);
-    
+
+    ref.listen(backupProvider, (previous, next) {
+      final message = next.message;
+      if (message == null || message == previous?.message) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor:
+              next.isError ? Theme.of(context).colorScheme.error : null,
+        ),
+      );
+      ref.read(backupProvider.notifier).clearMessage();
+    });
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -136,6 +151,26 @@ class SettingsScreen extends ConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
                     child: Text(
+                      'BACKUP',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: const _BackupSection(),
+                  ),
+                  const SizedBox(height: 32),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
+                    child: Text(
                       'ABOUT',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                             color: Theme.of(context).colorScheme.primary,
@@ -162,6 +197,74 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+class _BackupSection extends ConsumerWidget {
+  const _BackupSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final backup = ref.watch(backupProvider);
+
+    return Column(
+      children: [
+        if (backup.isBusy) const LinearProgressIndicator(),
+        ListTile(
+          leading: const Icon(Icons.save_alt_rounded),
+          title: const Text('Save a backup'),
+          subtitle: const Text(
+            'Books, positions, bookmarks and streaks in one file.',
+          ),
+          enabled: !backup.isBusy,
+          onTap: () => ref.read(backupProvider.notifier).exportBackup(),
+        ),
+        Divider(
+          height: 1,
+          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+        ListTile(
+          leading: const Icon(Icons.settings_backup_restore_rounded),
+          title: const Text('Restore a backup'),
+          subtitle: const Text('Replaces everything currently in the app.'),
+          enabled: !backup.isBusy,
+          onTap: () => _confirmRestore(context, ref),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmRestore(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore backup?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: const Text(
+          'Your current library, listening positions, bookmarks and streaks '
+          'are replaced by the ones in the backup. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: Text(
+              'Restore',
+              style: TextStyle(color: Theme.of(ctx).colorScheme.onError),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await ref.read(backupProvider.notifier).restoreBackup();
   }
 }
 

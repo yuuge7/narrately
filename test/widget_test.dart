@@ -7,6 +7,7 @@ import 'package:narrately/providers/database_provider.dart';
 import 'package:narrately/services/database_service.dart';
 import 'package:narrately/models/book.dart';
 import 'package:narrately/models/user_stats.dart';
+import 'dart:typed_data';
 
 class MockDatabaseService implements DatabaseService {
   @override
@@ -35,7 +36,18 @@ class MockDatabaseService implements DatabaseService {
   Future<List<Book>> getAllBooks() async => [];
   
   @override
-  Future<void> savePlaybackState(String bookId, String chapterId, int chunkIndex) async {}
+  Future<void> setBookSpeed(String bookId, double? speed) async {}
+
+  @override
+  Future<void> savePlaybackState(
+    String bookId,
+    String chapterId,
+    int chunkIndex,
+    int charOffset,
+  ) async {}
+
+  @override
+  Future<Map<String, Map<String, dynamic>>> getAllPlaybackStates() async => {};
   
   @override
   Future<Map<String, dynamic>?> getPlaybackState(String bookId) async => null;
@@ -50,13 +62,32 @@ class MockDatabaseService implements DatabaseService {
   Future<List<Map<String, dynamic>>> getListeningHistory(int limit) async => [];
   
   @override
-  Future<void> addBookmark(String id, String bookId, String chapterId, int chunkIndex, String note) async {}
+  Future<void> addBookmark(
+    String id,
+    String bookId,
+    String chapterId,
+    int chunkIndex,
+    int charOffset,
+    String note,
+  ) async {}
   
   @override
   Future<List<Map<String, dynamic>>> getBookmarks(String bookId) async => [];
   
   @override
   Future<void> deleteBookmark(String id) async {}
+
+  @override
+  Future<Uint8List> exportBytes() async => Uint8List(0);
+
+  @override
+  Future<bool> looksLikeBackup(String path) async => false;
+
+  @override
+  Future<void> restoreFrom(String path) async {}
+
+  @override
+  Future<void> close() async {}
 }
 
 void main() {
@@ -72,7 +103,7 @@ void main() {
 
     // Verify that the empty state is displayed
     expect(find.text('Your library is empty'), findsOneWidget);
-    expect(find.text('Import Book'), findsOneWidget);
+    expect(find.text('Import Books'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsOneWidget);
   });
 }

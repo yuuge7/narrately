@@ -84,15 +84,21 @@ class StatsNotifier extends Notifier<StatsState> {
 
   Future<void> addListenTime(int seconds) async {
     if (state.stats == null) return;
-    
-    var stats = state.stats!;
-    final todayStr = DateTime.now().toIso8601String().split('T')[0];
-    
+
+    final db = ref.read(databaseServiceProvider);
+    final todayStr = _dayKey(DateTime.now());
+
+    // Re-read instead of trusting the cached copy. This runs every few seconds
+    // while playing and rewrites the whole row, so using a copy loaded at
+    // startup wiped anything the player had saved since — the preferred voice
+    // disappeared a few seconds after being chosen.
+    var stats = await db.getUserStats();
+
     if (stats.lastListenedDate != todayStr) {
       await _init();
-      stats = state.stats!;
+      stats = await db.getUserStats();
     }
-    
+
     final newSeconds = stats.secondsListenedToday + seconds;
     int newStreak = stats.currentStreak;
     int newLongest = stats.longestStreak;
@@ -113,7 +119,6 @@ class StatsNotifier extends Notifier<StatsState> {
       goalReachedToday: goalReachedToday,
     );
     
-    final db = ref.read(databaseServiceProvider);
     await db.updateUserStats(updatedStats);
     await db.saveListeningHistory(todayStr, newSeconds, goalReachedToday);
     
@@ -124,21 +129,44 @@ class StatsNotifier extends Notifier<StatsState> {
   }
   
   Future<void> setDailyGoal(int seconds) async {
-    if (state.stats == null) return;
-    final updatedStats = state.stats!.copyWith(dailyGoalSeconds: seconds);
-    await ref.read(databaseServiceProvider).updateUserStats(updatedStats);
-    state = state.copyWith(stats: updatedStats);
+    await _update((stats) => stats.copyWith(dailyGoalSeconds: seconds));
+  }
+
+  Future<void> setFontSize(double size) async {
+    await _update((stats) => stats.copyWith(preferredFontSize: size));
+  }
+
+  Future<void> setThemeMode(String mode) async {
+    await _update((stats) => stats.copyWith(themeMode: mode));
+  }
+
+  Future<void> setLibrarySort(String sortKey) async {
+    await _update((stats) => stats.copyWith(librarySort: sortKey));
+  }
+
+  /// Re-reads everything from the database. Used after a backup is restored,
+  /// where the stats in memory belong to the database that was replaced.
+  Future<void> reload() async {
+    state = const StatsState();
+    await _init();
   }
 
   void updateStats(UserStats newStats) {
     state = state.copyWith(stats: newStats);
   }
 
-  Future<void> setFontSize(double size) async {
-    if (state.stats == null) return;
-    final updatedStats = state.stats!.copyWith(preferredFontSize: size);
-    await ref.read(databaseServiceProvider).updateUserStats(updatedStats);
-    state = state.copyWith(stats: updatedStats);
+  /// Applies one change to `user_stats`, re-reading the row first.
+  ///
+  /// `user_stats` is a single row written by this notifier and by the player,
+  /// and [DatabaseService.updateUserStats] replaces the whole row. Writing a
+  /// cached copy therefore silently reverted whatever the other one had saved
+  /// since this notifier last loaded — changing the font size wiped the
+  /// preferred voice.
+  Future<void> _update(UserStats Function(UserStats current) change) async {
+    final db = ref.read(databaseServiceProvider);
+    final updated = change(await db.getUserStats());
+    await db.updateUserStats(updated);
+    state = state.copyWith(stats: updated);
   }
 }
 

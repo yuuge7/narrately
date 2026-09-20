@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/book.dart';
@@ -6,7 +7,7 @@ import '../models/chapter.dart';
 import '../models/user_stats.dart';
 
 class DatabaseService {
-  static const int _schemaVersion = 7;
+  static const int _schemaVersion = 9;
 
   Database? _db;
   Future<Database>? _opening;
@@ -62,7 +63,9 @@ class DatabaseService {
         author TEXT,
         file_path TEXT,
         cover_image_path TEXT,
-        content_hash TEXT
+        content_hash TEXT,
+        language TEXT,
+        playback_speed REAL
       )
     ''');
 
@@ -87,6 +90,7 @@ class DatabaseService {
         book_id TEXT PRIMARY KEY,
         last_chapter_id TEXT,
         last_position_words INTEGER,
+        last_position_chars INTEGER,
         updated_at INTEGER,
         FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE
       )
@@ -106,7 +110,8 @@ class DatabaseService {
         preferred_voice_name TEXT,
         preferred_voice_locale TEXT,
         theme_mode TEXT,
-        preferred_font_size REAL DEFAULT 18.0
+        preferred_font_size REAL DEFAULT 18.0,
+        library_sort TEXT DEFAULT 'added'
       )
     ''');
 
@@ -124,6 +129,7 @@ class DatabaseService {
         book_id TEXT,
         chapter_id TEXT,
         chunk_index INTEGER,
+        char_offset INTEGER,
         note TEXT,
         created_at TEXT,
         FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE
@@ -144,6 +150,11 @@ class DatabaseService {
     await _addColumn(db, 'user_stats', 'preferred_font_size', 'REAL DEFAULT 18.0');
     await _addColumn(db, 'playback_state', 'updated_at', 'INTEGER DEFAULT 0');
     await _addColumn(db, 'books', 'content_hash', 'TEXT');
+    await _addColumn(db, 'books', 'language', 'TEXT');
+    await _addColumn(db, 'books', 'playback_speed', 'REAL');
+    await _addColumn(db, 'playback_state', 'last_position_chars', 'INTEGER');
+    await _addColumn(db, 'user_stats', 'library_sort', "TEXT DEFAULT 'added'");
+    await _addColumn(db, 'bookmarks', 'char_offset', 'INTEGER');
   }
 
   Future<void> _addColumn(
@@ -213,6 +224,18 @@ class DatabaseService {
     );
   }
 
+  /// Stores the narration speed chosen for one book. Null clears the override
+  /// and puts the book back on the global default.
+  Future<void> setBookSpeed(String bookId, double? speed) async {
+    final db = await _database;
+    await db.update(
+      'books',
+      {'playback_speed': speed},
+      where: 'id = ?',
+      whereArgs: [bookId],
+    );
+  }
+
   Future<void> deleteBook(String bookId) async {
     final db = await _database;
 
@@ -267,7 +290,12 @@ class DatabaseService {
     return books;
   }
 
-  Future<void> savePlaybackState(String bookId, String chapterId, int chunkIndex) async {
+  Future<void> savePlaybackState(
+    String bookId,
+    String chapterId,
+    int chunkIndex,
+    int charOffset,
+  ) async {
     final db = await _database;
     await db.insert(
       'playback_state',
@@ -275,6 +303,7 @@ class DatabaseService {
         'book_id': bookId,
         'last_chapter_id': chapterId,
         'last_position_words': chunkIndex,
+        'last_position_chars': charOffset,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -293,6 +322,16 @@ class DatabaseService {
       return result.first;
     }
     return null;
+  }
+
+  /// Every book's saved position, keyed by book id. Used to draw progress on
+  /// the library cards without a query per card.
+  Future<Map<String, Map<String, dynamic>>> getAllPlaybackStates() async {
+    final db = await _database;
+    final rows = await db.query('playback_state');
+    return {
+      for (final row in rows) row['book_id'] as String: row,
+    };
   }
 
   Future<Map<String, dynamic>?> getMostRecentPlayback() async {
@@ -328,7 +367,14 @@ class DatabaseService {
     );
   }
 
-  Future<void> addBookmark(String id, String bookId, String chapterId, int chunkIndex, String note) async {
+  Future<void> addBookmark(
+    String id,
+    String bookId,
+    String chapterId,
+    int chunkIndex,
+    int charOffset,
+    String note,
+  ) async {
     final db = await _database;
     await db.insert(
       'bookmarks',
@@ -337,6 +383,7 @@ class DatabaseService {
         'book_id': bookId,
         'chapter_id': chapterId,
         'chunk_index': chunkIndex,
+        'char_offset': charOffset,
         'note': note,
         'created_at': DateTime.now().toIso8601String(),
       },
@@ -357,5 +404,62 @@ class DatabaseService {
   Future<void> deleteBookmark(String id) async {
     final db = await _database;
     await db.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// The whole database as a file, for a backup the user keeps.
+  ///
+  /// sqflite runs in WAL mode, so recent writes live in `narrately.db-wal`
+  /// rather than in the database file. Without the checkpoint the exported
+  /// copy silently loses everything since the last automatic one.
+  Future<Uint8List> exportBytes() async {
+    final db = await _database;
+    await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+    return File(db.path).readAsBytes();
+  }
+
+  /// True when [path] looks like a Narrately backup rather than some other
+  /// file the user picked.
+  Future<bool> looksLikeBackup(String path) async {
+    Database? probe;
+    try {
+      probe = await openDatabase(path, readOnly: true);
+      final tables = await probe.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table'",
+      );
+      final names = tables.map((row) => row['name'] as String).toSet();
+      return names.contains('books') && names.contains('user_stats');
+    } catch (e) {
+      return false;
+    } finally {
+      await probe?.close();
+    }
+  }
+
+  /// Replaces the live database with the backup at [path].
+  ///
+  /// The side files are removed as well: leaving a `-wal` that belongs to the
+  /// old database next to a restored one corrupts it on the next open.
+  Future<void> restoreFrom(String path) async {
+    final db = await _database;
+    final livePath = db.path;
+
+    await db.close();
+    _db = null;
+    _opening = null;
+
+    for (final suffix in const ['', '-wal', '-shm']) {
+      final file = File('$livePath$suffix');
+      if (await file.exists()) await file.delete();
+    }
+
+    await File(path).copy(livePath);
+    await _database;
+  }
+
+  Future<void> close() async {
+    final db = _db;
+    _db = null;
+    _opening = null;
+    if (db != null) await db.close();
   }
 }

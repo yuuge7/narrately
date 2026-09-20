@@ -14,6 +14,9 @@ class UserStats {
   final String themeMode; // "system", "light", "dark"
   final double preferredFontSize;
 
+  /// How the library grid is ordered. One of the keys in `LibrarySort`.
+  final String librarySort;
+
   const UserStats({
     this.currentStreak = 0,
     this.longestStreak = 0,
@@ -27,6 +30,7 @@ class UserStats {
     this.preferredVoiceLocale,
     this.themeMode = 'system',
     this.preferredFontSize = 18.0,
+    this.librarySort = 'added',
   });
 
   Map<String, dynamic> toMap() {
@@ -44,6 +48,7 @@ class UserStats {
       'preferred_voice_locale': preferredVoiceLocale,
       'theme_mode': themeMode,
       'preferred_font_size': preferredFontSize,
+      'library_sort': librarySort,
     };
   }
 
@@ -61,6 +66,7 @@ class UserStats {
       preferredVoiceLocale: map['preferred_voice_locale'] as String?,
       themeMode: map['theme_mode'] as String? ?? 'system',
       preferredFontSize: (map['preferred_font_size'] as num?)?.toDouble() ?? 18.0,
+      librarySort: map['library_sort'] as String? ?? 'added',
     );
   }
 
@@ -77,6 +83,7 @@ class UserStats {
     String? preferredVoiceLocale,
     String? themeMode,
     double? preferredFontSize,
+    String? librarySort,
   }) {
     return UserStats(
       currentStreak: currentStreak ?? this.currentStreak,
@@ -91,6 +98,7 @@ class UserStats {
       preferredVoiceLocale: preferredVoiceLocale ?? this.preferredVoiceLocale,
       themeMode: themeMode ?? this.themeMode,
       preferredFontSize: preferredFontSize ?? this.preferredFontSize,
+      librarySort: librarySort ?? this.librarySort,
     );
   }
 }

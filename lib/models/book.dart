@@ -11,6 +11,14 @@ class Book {
   /// books imported before fingerprinting existed.
   final String? contentHash;
 
+  /// BCP-47 tag from the book's own metadata ("ro", "en-GB"), used to pick a
+  /// narration voice. Null when the format carries no language, as PDF does.
+  final String? language;
+
+  /// Narration speed chosen for this book, overriding the global default.
+  /// Null until the speed is changed while this book is open.
+  final double? playbackSpeed;
+
   final List<Chapter> chapters;
 
   const Book({
@@ -20,6 +28,8 @@ class Book {
     required this.filePath,
     this.coverImagePath,
     this.contentHash,
+    this.language,
+    this.playbackSpeed,
     this.chapters = const [],
   });
 
@@ -33,6 +43,8 @@ class Book {
       'file_path': filePath,
       'cover_image_path': coverImagePath,
       'content_hash': contentHash,
+      'language': language,
+      'playback_speed': playbackSpeed,
     };
   }
 
@@ -44,6 +56,8 @@ class Book {
       filePath: map['file_path'],
       coverImagePath: map['cover_image_path'],
       contentHash: map['content_hash'] as String?,
+      language: map['language'] as String?,
+      playbackSpeed: (map['playback_speed'] as num?)?.toDouble(),
       chapters: chapters,
     );
   }
@@ -55,6 +69,8 @@ class Book {
     String? filePath,
     String? coverImagePath,
     String? contentHash,
+    String? language,
+    double? playbackSpeed,
     List<Chapter>? chapters,
   }) {
     return Book(
@@ -64,6 +80,8 @@ class Book {
       filePath: filePath ?? this.filePath,
       coverImagePath: coverImagePath ?? this.coverImagePath,
       contentHash: contentHash ?? this.contentHash,
+      language: language ?? this.language,
+      playbackSpeed: playbackSpeed ?? this.playbackSpeed,
       chapters: chapters ?? this.chapters,
     );
   }

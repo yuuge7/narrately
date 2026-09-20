@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  audio_service names its notification icons from Dart ("drawable/audio_service_rewind")
+  and looks them up at runtime with Resources.getIdentifier. Nothing in the Java or the
+  XML references them, so the resource shrinker removed all seven from release builds:
+  PlaybackStateCompat.CustomAction then threw "You must specify an icon resource id",
+  every setState call failed, and a release APK played with no media notification and no
+  lock-screen controls at all. Debug builds do not shrink resources, which is why it only
+  ever showed up in a release build.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/audio_service_*" />

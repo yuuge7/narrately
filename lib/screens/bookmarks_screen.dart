@@ -81,7 +81,12 @@ class BookmarksScreen extends ConsumerWidget {
                   },
                 ),
                 onTap: () {
-                  ref.read(playerProvider.notifier).playChapter(chapter, startingChunkIndex: chunkIndex, forceRestart: true);
+                  ref.read(playerProvider.notifier).playChapter(
+                        chapter,
+                        startingChunkIndex: chunkIndex,
+                        startingCharOffset: b['char_offset'] as int?,
+                        forceRestart: true,
+                      );
                   Navigator.of(context).pushReplacement(
                     MaterialPageRoute(
                       builder: (_) => const PlayerScreen(),

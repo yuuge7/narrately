@@ -11,10 +11,16 @@ class BookmarkNotifier extends Notifier<void> {
   @override
   void build() {}
   
-  Future<void> addBookmark(String bookId, String chapterId, int chunkIndex, String note) async {
+  Future<void> addBookmark(
+    String bookId,
+    String chapterId,
+    int chunkIndex,
+    int charOffset,
+    String note,
+  ) async {
     final db = ref.read(databaseServiceProvider);
     final id = const Uuid().v4();
-    await db.addBookmark(id, bookId, chapterId, chunkIndex, note);
+    await db.addBookmark(id, bookId, chapterId, chunkIndex, charOffset, note);
     ref.invalidate(bookmarksProvider(bookId));
   }
   
